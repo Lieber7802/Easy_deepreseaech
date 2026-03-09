@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: easy_deepresearch
+Version: 0.1.0
+Summary: Easy Deep Research with UI
+Requires-Python: >=3.10
+Requires-Dist: fastapi>=0.115.0
+Requires-Dist: uvicorn[standard]>=0.32.0
+Requires-Dist: langgraph>=0.2.0
+Requires-Dist: langchain-community
+Requires-Dist: langchain-openai
+Requires-Dist: langchain-anthropic
+Requires-Dist: langchain-tavily
+Requires-Dist: tavily-python
+Requires-Dist: python-dotenv
+Requires-Dist: pydantic
+Requires-Dist: requests
+Requires-Dist: openai

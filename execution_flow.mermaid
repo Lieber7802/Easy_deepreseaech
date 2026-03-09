@@ -1,0 +1,53 @@
+sequenceDiagram
+    participant User as 用户
+    participant FE as 前端 (Vue)
+    participant Main as 主流程 (LangGraph)
+    participant Sup as Supervisor (主管)
+    participant Sub as Researcher (研究员)
+    participant Ext as 外部工具 (LLM/Search)
+
+    User->>FE: 输入: "探索Agent系统的发展历程"
+    FE->>Main: 发起 API 请求
+    
+    %% 阶段 1: 规划
+    Main->>Ext: 调用 LLM 生成研究简报 (Brief)
+    Ext-->>Main: 返回结构化简报
+    
+    %% 阶段 2: 主管循环 (Loop Start)
+    loop 迭代研究 (Max Iterations)
+        Main->>Sup: 传入简报 & 当前笔记
+        Sup->>Ext: 思考 (Think) & 拆解任务
+        
+        alt 需要更多信息 (ConductResearch)
+            Ext-->>Sup: 生成 ToolCalls (任务1, 任务2...)
+            Sup->>FE: 推送 "todo_list" 事件
+            
+            par 并发执行 (Parallel Execution)
+                %% 子任务 1
+                Sup->>Sub: 启动研究员 (任务1)
+                Sub->>Ext: 搜索 (DuckDuckGo/Tavily)
+                Ext-->>Sub: 返回网页内容
+                Sub->>Ext: 压缩总结 (Compress)
+                Ext-->>Sup: 返回笔记 (Note 1)
+                
+                %% 子任务 2
+                Sup->>Sub: 启动研究员 (任务2)
+                Sub->>Ext: 搜索 (DuckDuckGo/Tavily)
+                Ext-->>Sub: 返回网页内容
+                Sub->>Ext: 压缩总结 (Compress)
+                Ext-->>Sup: 返回笔记 (Note 2)
+            end
+            
+            Sup->>FE: 推送 "task_status: completed"
+            
+        else 信息已足够 (ResearchComplete)
+            Ext-->>Sup: 调用 ResearchComplete
+            Note over Sup: 跳出循环
+        end
+    end
+    
+    %% 阶段 3: 报告生成
+    Main->>Ext: 发送所有笔记 (All Notes)
+    Ext-->>Main: 生成 Markdown 报告
+    Main->>FE: 推送 "final_report"
+    FE->>User: 渲染最终报告

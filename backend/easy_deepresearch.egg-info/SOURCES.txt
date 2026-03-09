@@ -1,0 +1,7 @@
+pyproject.toml
+easy_deepresearch.egg-info/PKG-INFO
+easy_deepresearch.egg-info/SOURCES.txt
+easy_deepresearch.egg-info/dependency_links.txt
+easy_deepresearch.egg-info/requires.txt
+easy_deepresearch.egg-info/top_level.txt
+src/__init__.py

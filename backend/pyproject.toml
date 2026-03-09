@@ -1,0 +1,26 @@
+[project]
+name = "easy_deepresearch"
+version = "0.1.0"
+description = "Easy Deep Research with UI"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "langgraph>=0.2.0",
+    "langchain-community",
+    "langchain-openai",
+    "langchain-anthropic",
+    "langchain-tavily",
+    "tavily-python",
+    "python-dotenv",
+    "pydantic",
+    "requests",
+    "openai"
+]
+
+[build-system]
+requires = ["setuptools>=73.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["src"]
