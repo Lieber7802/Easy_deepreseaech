@@ -32,6 +32,7 @@ from tavily import AsyncTavilyClient
 from src.core.configuration import Configuration, SearchAPI
 from src.core.prompts import summarize_webpage_prompt
 from src.core.state import ResearchComplete, Summary
+from src.evaluation.collector import emit_metric_from_runnable_config
 
 from src.core.rag_manager import get_rag_manager
 from src.core.skills.base import Skill, SkillRegistry
@@ -44,7 +45,8 @@ from src.core.skills.builtin import register_builtin_skills
 @tool(description="Search local knowledge base for uploaded documents")
 def search_knowledge_base(
     query: str,
-    k: Annotated[int, InjectedToolArg] = 5
+    k: Annotated[int, InjectedToolArg] = 5,
+    config: RunnableConfig = None,
 ) -> str:
     """Search the local knowledge base (uploaded documents) for relevant information.
     
@@ -62,7 +64,19 @@ def search_knowledge_base(
     """
     try:
         rag = get_rag_manager()
-        docs = rag.retrieve(query, k=k)
+        ranked_docs = rag.retrieve_with_scores(query, k=k)
+        docs = [doc for score, doc in ranked_docs]
+        emit_metric_from_runnable_config(
+            config=config,
+            event_type="hybrid_rag_retrieval_stats",
+            component="rag_classic",
+            payload={
+                "query_length": len(query),
+                "top_k": k,
+                "returned_docs": len(ranked_docs),
+                "max_score": max((score for score, _ in ranked_docs), default=0.0),
+            },
+        )
         
         if not docs:
             return "No relevant information found in the knowledge base."
@@ -76,6 +90,94 @@ def search_knowledge_base(
         return "\n---\n".join(results)
     except Exception as e:
         return f"Error searching knowledge base: {str(e)}"
+
+@tool(description="Agentic RAG local knowledge tool with query rewrite, grading, retry, and fallback")
+async def agentic_knowledge_base(
+    query: str,
+    k: Annotated[int, InjectedToolArg] = 5,
+    max_retries: Annotated[int, InjectedToolArg] = 2,
+    external_documents: Annotated[List[Dict[str, Any]] | None, InjectedToolArg] = None,
+    config: RunnableConfig = None,
+) -> str:
+    """Run Agentic RAG subgraph over local knowledge base with quality control.
+    
+    Args:
+        query: The search query string
+        k: Number of parent documents to return
+        max_retries: Maximum self-correction retries before fallback
+        config: Runtime configuration for fallback tools
+        
+    Returns:
+        Agentic RAG answer with evidence and execution trace
+    """
+    rag = get_rag_manager()
+
+    async def web_fallback(local_query: str) -> str:
+        if not get_tavily_api_key(config) and not os.getenv("TAVILY_API_KEY"):
+            return "知识库证据不足，且未配置可用的公网搜索密钥。"
+        try:
+            responses = await tavily_search_async(
+                [local_query],
+                max_results=3,
+                include_raw_content=False,
+                topic="general",
+                config=config,
+            )
+            snippets: list[str] = []
+            for response in responses:
+                for item in response.get("results", [])[:3]:
+                    title = item.get("title", "Untitled")
+                    url = item.get("url", "")
+                    content = (item.get("content") or "").replace("\n", " ").strip()
+                    snippets.append(f"- {title} | {url}\n  {content[:260]}")
+            if not snippets:
+                return "知识库证据不足，公网回退未检索到有效结果。"
+            return "知识库证据不足，已触发公网补充检索：\n" + "\n".join(snippets)
+        except Exception as e:
+            return f"知识库证据不足，公网回退检索失败: {str(e)}"
+
+    try:
+        result = await rag.run_agentic_rag(
+            query=query,
+            k=k,
+            max_retries=max_retries,
+            web_fallback=web_fallback,
+            external_documents=external_documents,
+            eval_context={
+                "config": config,
+                "component": "rag_agentic",
+            },
+        )
+        answer = result.get("final_answer", "")
+        trace = result.get("trace", [])
+        route = result.get("route", "local_kb")
+        knowledge_gap = result.get("knowledge_gap", False)
+        evaluation = result.get("evaluation", {})
+        emit_metric_from_runnable_config(
+            config=config,
+            event_type="agentic_rag_summary",
+            component="rag_agentic",
+            payload={
+                "knowledge_gap": bool(knowledge_gap),
+                "retry_count": int(evaluation.get("retry_count", 0)),
+                "grader_pass_rate": float(evaluation.get("grader_pass_rate", 0.0)),
+                "fallback_rate": float(evaluation.get("fallback_rate", 0.0)),
+                "grounded_pass_rate": float(evaluation.get("grounded_pass_rate", 0.0)),
+                "total_latency_ms": float(evaluation.get("total_latency_ms", 0.0)),
+            },
+        )
+        trace_text = " -> ".join(trace) if trace else "No trace"
+        return (
+            f"[Route: {route}] [KnowledgeGap: {knowledge_gap}]\n"
+            f"{answer}\n\n"
+            f"[Trace]\n{trace_text}"
+        )
+    except Exception as e:
+        fallback_result = search_knowledge_base.invoke({"query": query, "k": k})
+        return (
+            f"Agentic RAG execution failed: {str(e)}\n"
+            f"Fallback to classic RAG:\n{fallback_result}"
+        )
 
 ##########################
 # Tavily Search Tool Utils
@@ -666,9 +768,17 @@ async def get_all_tools(config: RunnableConfig):
     # Always include core skills
     skills_map = SkillRegistry.list_skills()
     
-    # By default, include all registered skills for the agent to choose from
-    # In a real app, we might filter based on user selection in config
+    configurable_payload = (config or {}).get("configurable", {})
+    rag_mode = str(configurable_payload.get("agentic_rag_mode", "both")).lower()
+
+    skip_agentic = rag_mode == "classic"
+    skip_classic = rag_mode == "agentic"
+
     for skill_name, skill_meta in skills_map.items():
+        if skill_name == "agentic_knowledge_base" and skip_agentic:
+            continue
+        if skill_name == "search_knowledge_base" and skip_classic:
+            continue
         skill = SkillRegistry.get_skill(skill_name)
         if skill:
             tools.append(skill_to_tool(skill))

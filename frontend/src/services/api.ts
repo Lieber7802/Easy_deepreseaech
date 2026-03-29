@@ -4,6 +4,13 @@ const baseURL =
 export interface ResearchRequest {
   topic: string;
   search_api?: string;
+  run_id?: string;
+  experiment_id?: string;
+  dataset_id?: string;
+  sample_id?: string;
+  eval_mode?: string;
+  evaluation_enabled?: boolean;
+  agentic_rag_mode?: "classic" | "agentic" | "both";
 }
 
 export interface ResearchStreamEvent {

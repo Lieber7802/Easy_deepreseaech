@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.pyd
+
+.env
+.env.*
+
+backend/data/chroma_db/
+backend/data/uploads/
+backend/data/evaluations/
+backend/debug_*.jsonl
+backend/debug_*.log
+
+*.egg-info/
+dist/
+build/

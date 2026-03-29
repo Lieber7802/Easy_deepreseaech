@@ -1,5 +1,6 @@
 import json
 import logging
+import uuid
 from typing import AsyncIterator
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
@@ -42,7 +43,18 @@ async def stream_research(payload: ResearchRequest):
         try:
             # 默认使用 tavily，如果 payload 指定了 search_api 则覆盖
             search_api = payload.search_api or "tavily"
-            async for event in service.run_stream(payload.topic, search_api=search_api):
+            run_id = payload.run_id or str(uuid.uuid4())
+            async for event in service.run_stream(
+                payload.topic,
+                search_api=search_api,
+                run_id=run_id,
+                experiment_id=payload.experiment_id,
+                dataset_id=payload.dataset_id,
+                sample_id=payload.sample_id,
+                eval_mode=payload.eval_mode or "online",
+                agentic_rag_mode=payload.agentic_rag_mode or "both",
+                evaluation_enabled=bool(payload.evaluation_enabled),
+            ):
                 logger.debug(f"Yielding event: {event['type']}")
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as e:

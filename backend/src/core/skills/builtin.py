@@ -3,7 +3,6 @@ from typing import Any, List, Optional
 from pydantic import Field, BaseModel
 
 from src.core.skills.base import Skill, SkillRegistry
-from src.core.utils import tavily_search, search_knowledge_base
 from langchain_core.tools import tool
 import arxiv
 
@@ -15,9 +14,7 @@ class TavilySearchSkill(Skill):
     version: str = "1.0.0"
     
     def execute(self, **kwargs) -> Any:
-        # We delegate to the existing async tool function
-        # Note: In a real migration, we might move logic here. 
-        # For now, we wrap the existing tool to maintain compatibility.
+        from src.core.utils import tavily_search
         return tavily_search.invoke(kwargs)
 
 class RAGSearchSkill(Skill):
@@ -26,7 +23,17 @@ class RAGSearchSkill(Skill):
     version: str = "1.0.0"
     
     def execute(self, **kwargs) -> Any:
+        from src.core.utils import search_knowledge_base
         return search_knowledge_base.invoke(kwargs)
+
+class AgenticRAGSearchSkill(Skill):
+    name: str = "agentic_knowledge_base"
+    description: str = "Agentic RAG search for local knowledge with grading, rewrite, and fallback."
+    version: str = "1.0.0"
+    
+    def execute(self, **kwargs) -> Any:
+        from src.core.utils import agentic_knowledge_base
+        return agentic_knowledge_base.invoke(kwargs)
 
 # 2. Add New Skill: Arxiv Search
 
@@ -70,4 +77,5 @@ class ArxivSearchSkill(Skill):
 def register_builtin_skills():
     SkillRegistry.register(TavilySearchSkill())
     SkillRegistry.register(RAGSearchSkill())
+    SkillRegistry.register(AgenticRAGSearchSkill())
     SkillRegistry.register(ArxivSearchSkill())

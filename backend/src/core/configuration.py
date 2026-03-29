@@ -117,6 +117,21 @@ class Configuration(BaseModel):
             }
         }
     )
+    agentic_rag_mode: str = Field(
+        default="both",
+        metadata={
+            "x_oap_ui_config": {
+                "type": "select",
+                "default": "both",
+                "description": "Local knowledge retrieval mode: both tools, classic only, or agentic only.",
+                "options": [
+                    {"label": "Both", "value": "both"},
+                    {"label": "Classic RAG Only", "value": "classic"},
+                    {"label": "Agentic RAG Only", "value": "agentic"}
+                ]
+            }
+        }
+    )
     # Model Configuration
     summarization_model: str = Field(
         default="openai:glm-4",

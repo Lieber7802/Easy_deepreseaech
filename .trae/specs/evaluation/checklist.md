@@ -1,0 +1,9 @@
+- [x] `spec.md` 已明确评估系统同时覆盖 Agentic RAG、经典 Hybrid RAG 与多智能体主流程。
+- [x] 规格中已包含统一评估上下文字段，如 `run_id`、`experiment_id`、`dataset_id`、`sample_id`、`eval_mode`。
+- [x] 规格中已包含在线埋点、离线基准回放和实验汇总三类能力。
+- [x] `tasks.md` 已包含后端 collector、schema、runner、report 的实现任务。
+- [x] `tasks.md` 已包含经典 RAG 与 Agentic RAG 两条链路的指标接入任务。
+- [x] `tasks.md` 已包含 SSE / 前端评估事件预留和文档同步任务。
+- [x] `tasks.md` 已包含 classic / agentic / both 三种模式的实验对比任务。
+- [x] `tasks.md` 已包含验证“评估埋点不破坏现有主链路”的校验任务。
+- [x] 规格能够回答“如何证明 Agentic RAG 比经典 Hybrid RAG 更好、好多少”的实现路径问题。

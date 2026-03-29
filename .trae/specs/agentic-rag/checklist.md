@@ -1,0 +1,9 @@
+- [x] `spec.md` 已明确将传统 RAG 升级为 Agentic RAG 子图，而不是单次静态检索函数。
+- [x] 规格中已覆盖预检索阶段的 Query Analysis、Query Rewriting、Query Decomposition。
+- [x] 规格中已覆盖检索中阶段的 Hybrid Retrieve、Document Grader、Reflect / Retry / Knowledge Gap。
+- [x] 规格中已覆盖后检索阶段的 GenerateDraft、Hallucination Checker 与 Groundedness 校验。
+- [x] `tasks.md` 已包含将现有检索链路重构为 LangGraph 子图的具体实现任务。
+- [x] `tasks.md` 已包含将 Agentic RAG 接入现有 Skill / Researcher 体系的任务。
+- [x] `tasks.md` 已包含分阶段实施路径：Document Grader、完整子图封装、MCP 动态知识注入。
+- [x] `tasks.md` 已包含防死循环、知识缺口回退与多跳检索的验证任务。
+- [x] 规格与任务未破坏现有 Deep Research 主图、Supervisor 分发和并发研究主链路的兼容性要求。

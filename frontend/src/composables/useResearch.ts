@@ -159,6 +159,18 @@ export function useResearch() {
           });
         }
         break;
+      
+      case 'metrics':
+        if (event.metrics && typeof event.metrics === 'object') {
+          progressLogs.value.push(`评估指标已生成 (run_id=${String(event.run_id || '')})`);
+        }
+        break;
+      
+      case 'eval_summary':
+        if (event.summary && typeof event.summary === 'object') {
+          progressLogs.value.push('评估汇总已生成');
+        }
+        break;
         
       case 'error':
          const errorMsg = typeof event.detail === 'string' ? event.detail : 'Unknown error';

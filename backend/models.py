@@ -17,6 +17,16 @@ class TodoItem(BaseModel):
 class ResearchRequest(BaseModel):
     topic: str
     search_api: Optional[str] = None
+    run_id: Optional[str] = None
+    experiment_id: Optional[str] = None
+    dataset_id: Optional[str] = None
+    sample_id: Optional[str] = None
+    eval_mode: Optional[str] = None
+    evaluation_enabled: Optional[bool] = None
+    agentic_rag_mode: Optional[str] = Field(
+        default=None,
+        description="classic | agentic | both"
+    )
 
 class ResearchResponse(BaseModel):
     report_markdown: str

@@ -47,6 +47,56 @@ class ResearchQuestion(BaseModel):
         description="A research question that will be used to guide the research.",
     )
 
+class QueryAnalysisResult(BaseModel):
+    """Result of query analysis for Agentic RAG routing."""
+    
+    route: str = Field(
+        description="Routing decision: local_kb, web_search, or direct_answer.",
+    )
+    needs_rewrite: bool = Field(
+        description="Whether the query should be rewritten for better retrieval.",
+    )
+    needs_decomposition: bool = Field(
+        description="Whether the query should be decomposed into sub-queries.",
+    )
+    rationale: str = Field(
+        description="Brief reason for the routing and optimization decisions.",
+    )
+
+class QueryRewriteResult(BaseModel):
+    """Rewritten query for improved retrieval."""
+    
+    rewritten_query: str = Field(
+        description="A rewritten query that improves retrieval quality while preserving intent.",
+    )
+
+class QueryDecompositionResult(BaseModel):
+    """Decomposed sub-queries for complex question retrieval."""
+    
+    sub_queries: list[str] = Field(
+        description="2-3 focused sub-queries that cover the original question.",
+    )
+
+class DocumentGradeResult(BaseModel):
+    """Relevance grading result for a retrieved document chunk."""
+    
+    relevant: bool = Field(
+        description="Whether the retrieved document is relevant to the query.",
+    )
+    reason: str = Field(
+        description="Short reason for the relevance judgment.",
+    )
+
+class HallucinationCheckResult(BaseModel):
+    """Groundedness check result for generated answer."""
+    
+    grounded: bool = Field(
+        description="Whether every major claim in the draft is grounded in provided evidence.",
+    )
+    reason: str = Field(
+        description="Short explanation of the groundedness decision.",
+    )
+
 
 ###################
 # State Definitions
@@ -94,3 +144,20 @@ class ResearcherOutputState(BaseModel):
     
     compressed_research: str
     raw_notes: Annotated[list[str], override_reducer] = []
+
+class AgenticRAGState(TypedDict):
+    """State for Agentic RAG subgraph execution."""
+    
+    query: str
+    rewritten_query: str
+    sub_queries: list[str]
+    retrieval_queries: list[str]
+    retrieved_docs: Annotated[list[dict], operator.add]
+    graded_docs: Annotated[list[dict], operator.add]
+    retry_count: int
+    max_retries: int
+    knowledge_gap: bool
+    draft_answer: str
+    final_answer: str
+    route: str
+    trace: Annotated[list[str], operator.add]

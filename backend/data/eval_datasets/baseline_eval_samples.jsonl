@@ -1,0 +1,3 @@
+{"sample_id":"local-001","topic":"请总结上传文档中关于固态电池商业化进展的关键结论","search_api":"tavily","expected_route":"local_kb","category":"local_hit"}
+{"sample_id":"gap-001","topic":"请给出 2026 年最新全球固态电池量产里程碑并附最新来源","search_api":"tavily","expected_route":"web_search","category":"knowledge_gap"}
+{"sample_id":"complex-001","topic":"对比上传文档中的技术路线与公开网络资料，从成本、量产风险、供应链三个维度分析固态电池落地难点","search_api":"tavily","expected_route":"local_kb","category":"multi_hop"}

@@ -1,11 +1,14 @@
 import json
 import uuid
 import asyncio
+import time
 from typing import AsyncIterator, Dict, Any, List
 from langchain_core.messages import AIMessage, ToolMessage
 from src.core.deep_researcher import deep_researcher
 from src.core.configuration import Configuration
 from src.core.skills.base import SkillRegistry
+from src.evaluation.collector import get_collector
+from src.evaluation.schema import EvaluationContext
 from models import TodoItem
 
 class DeepResearchService:
@@ -39,16 +42,73 @@ class DeepResearchService:
         self.topic_to_task_id[topic] = task.id
         return task
 
-    async def run_stream(self, topic: str, search_api: str = "tavily") -> AsyncIterator[dict]:
+    async def run_stream(
+        self,
+        topic: str,
+        search_api: str = "tavily",
+        run_id: str | None = None,
+        experiment_id: str | None = None,
+        dataset_id: str | None = None,
+        sample_id: str | None = None,
+        eval_mode: str = "online",
+        agentic_rag_mode: str = "both",
+        evaluation_enabled: bool = False,
+    ) -> AsyncIterator[dict]:
+        self.todo_items = []
+        self.topic_to_task_id = {}
+        self.tool_call_id_to_task_id = {}
+        self.task_counter = 0
+
+        active_run_id = run_id or str(uuid.uuid4())
+        thread_id = str(uuid.uuid4())
+        collector = get_collector()
+        eval_context = EvaluationContext(
+            run_id=active_run_id,
+            experiment_id=experiment_id,
+            dataset_id=dataset_id,
+            sample_id=sample_id,
+            eval_mode=eval_mode,
+            rag_mode=agentic_rag_mode,
+        )
+
         inputs = {"messages": [{"role": "user", "content": topic}]}
         config = {
             "configurable": {
-                "thread_id": str(uuid.uuid4()),
+                "thread_id": thread_id,
                 "search_api": search_api,
                 "max_researcher_iterations": 5, # 增加迭代次数以防止任务被截断
-                "max_concurrent_research_units": 3
+                "max_concurrent_research_units": 3,
+                "run_id": active_run_id,
+                "experiment_id": experiment_id,
+                "dataset_id": dataset_id,
+                "sample_id": sample_id,
+                "eval_mode": eval_mode,
+                "agentic_rag_mode": agentic_rag_mode,
+                "evaluation_enabled": evaluation_enabled,
             }
         }
+
+        run_started_at = time.perf_counter()
+        first_event_latency_ms: float | None = None
+        metrics = {
+            "tasks_created": 0,
+            "tasks_completed": 0,
+            "tasks_failed": 0,
+            "tool_calls": 0,
+        }
+        has_finished = False
+
+        if evaluation_enabled:
+            collector.emit_from_context(
+                context=eval_context,
+                event_type="run_started",
+                component="service",
+                payload={
+                    "topic": topic,
+                    "search_api": search_api,
+                    "thread_id": thread_id,
+                },
+            )
 
         yield {"type": "status", "message": "初始化研究流程..."}
 
@@ -62,6 +122,9 @@ class DeepResearchService:
             tags = event.get("tags", [])
             metadata = event.get("metadata", {})
             
+            if first_event_latency_ms is None:
+                first_event_latency_ms = (time.perf_counter() - run_started_at) * 1000.0
+
             current_topic = metadata.get("research_topic")
             current_tool_call_id = metadata.get("tool_call_id")
             
@@ -90,6 +153,17 @@ class DeepResearchService:
                                     self.tool_call_id_to_task_id[tool_call_id] = task.id
                     
                     if new_tasks:
+                        metrics["tasks_created"] = len(self.todo_items)
+                        if evaluation_enabled:
+                            collector.emit_from_context(
+                                context=eval_context,
+                                event_type="todo_tasks_created",
+                                component="service",
+                                payload={
+                                    "tasks_created": len(self.todo_items),
+                                    "latest_created_count": len(new_tasks),
+                                },
+                            )
                         yield {
                             "type": "todo_list",
                             "tasks": [t.dict() for t in self.todo_items],
@@ -112,6 +186,17 @@ class DeepResearchService:
 
             # 3. 捕获 Tool Calls (包括搜索)
             if kind == "on_tool_start" and current_task_id:
+                 metrics["tool_calls"] += 1
+                 if evaluation_enabled:
+                    collector.emit_from_context(
+                        context=eval_context,
+                        event_type="tool_invoked",
+                        component="service",
+                        payload={
+                            "tool": name,
+                            "task_id": current_task_id,
+                        },
+                    )
                  yield {
                     "type": "tool_call",
                     "tool": name,
@@ -160,6 +245,7 @@ class DeepResearchService:
                         "task_id": current_task_id,
                         "status": "completed"
                      }
+                     metrics["tasks_completed"] += 1
 
             # 6. 捕获 supervisor_tools 结束，用于处理异常情况下的任务状态更新
             if kind == "on_chain_end" and name == "supervisor_tools":
@@ -200,10 +286,12 @@ class DeepResearchService:
                                         if "Error" in str(msg.content) or "failed" in str(msg.content):
                                             t.status = "failed"
                                             t.summary = str(msg.content)[:500] + "..." # 截断摘要防止过长
+                                            metrics["tasks_failed"] += 1
                                         else:
                                             # 正常完成（可能是从 ToolMessage 里恢复的）
                                             t.status = "completed"
                                             t.summary = str(msg.content)[:500] + "..." # 截断摘要防止过长
+                                            metrics["tasks_completed"] += 1
                                         
                                         yield {
                                             "type": "task_status",
@@ -217,8 +305,68 @@ class DeepResearchService:
                 output = data.get("output")
                 if output and isinstance(output, dict) and "final_report" in output:
                     report = output["final_report"]
+                    total_latency_ms = (time.perf_counter() - run_started_at) * 1000.0
+                    completed_count = sum(1 for t in self.todo_items if t.status == "completed")
+                    failed_count = sum(1 for t in self.todo_items if t.status == "failed")
+                    if evaluation_enabled:
+                        collector.emit_from_context(
+                            context=eval_context,
+                            event_type="run_finished",
+                            component="service",
+                            payload={
+                                "status": "completed",
+                                "total_latency_ms": total_latency_ms,
+                                "first_event_latency_ms": first_event_latency_ms or 0.0,
+                                "tasks_created": len(self.todo_items),
+                                "tasks_completed": completed_count,
+                                "tasks_failed": failed_count,
+                                "tool_calls": metrics["tool_calls"],
+                                "report_length": len(report),
+                            },
+                        )
+                        yield {
+                            "type": "metrics",
+                            "run_id": active_run_id,
+                            "metrics": {
+                                "total_latency_ms": total_latency_ms,
+                                "first_event_latency_ms": first_event_latency_ms or 0.0,
+                                "tasks_created": len(self.todo_items),
+                                "tasks_completed": completed_count,
+                                "tasks_failed": failed_count,
+                                "tool_calls": metrics["tool_calls"],
+                            },
+                        }
+                        yield {
+                            "type": "eval_summary",
+                            "run_id": active_run_id,
+                            "summary": {
+                                "rag_mode": agentic_rag_mode,
+                                "tasks_created": len(self.todo_items),
+                                "tasks_completed": completed_count,
+                                "tasks_failed": failed_count,
+                                "tool_calls": metrics["tool_calls"],
+                            },
+                        }
                     yield {
                         "type": "final_report",
                         "report": report
                     }
                     yield {"type": "done"}
+                    has_finished = True
+                    return
+        if evaluation_enabled and not has_finished:
+            total_latency_ms = (time.perf_counter() - run_started_at) * 1000.0
+            collector.emit_from_context(
+                context=eval_context,
+                event_type="run_finished",
+                component="service",
+                payload={
+                    "status": "failed",
+                    "total_latency_ms": total_latency_ms,
+                    "first_event_latency_ms": first_event_latency_ms or 0.0,
+                    "tasks_created": len(self.todo_items),
+                    "tasks_completed": sum(1 for t in self.todo_items if t.status == "completed"),
+                    "tasks_failed": sum(1 for t in self.todo_items if t.status == "failed"),
+                    "tool_calls": metrics["tool_calls"],
+                },
+            )
